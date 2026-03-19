@@ -58,40 +58,24 @@ resource "linode_instance" "searxng" {
   authorized_keys = [var.ssh_public_key]
   firewall_id     = 3495544
 
-  metadata {
-    user_data = base64encode(<<-EOF
-      #!/bin/ash
-      apk update
-      apk add docker docker-compose openrc
+  connection {
+    type     = "ssh"
+    user     = "root"
+    password = var.root_password
+    host     = tolist(self.ipv4)[0]
+  }
 
-      rc-update add docker default
-      service docker start
-
-      # Wait for Docker socket to be ready
-      for i in $(seq 1 30); do
-        docker info >/dev/null 2>&1 && break
-        sleep 2
-      done
-
-      mkdir -p /opt/searxng
-      cat > /opt/searxng/docker-compose.yml <<'COMPOSE'
-      services:
-        searxng:
-          image: docker.io/searxng/searxng:latest
-          container_name: searxng
-          restart: unless-stopped
-          ports:
-            - "80:8080"
-          volumes:
-            - ./settings:/etc/searxng
-          environment:
-            - SEARXNG_BASE_URL=https://search.catlan.net/
-      COMPOSE
-
-      cd /opt/searxng
-      docker compose up -d
-    EOF
-    )
+  provisioner "remote-exec" {
+    inline = [
+      "apk update",
+      "apk add docker docker-compose openrc",
+      "rc-update add docker default",
+      "service docker start",
+      "for i in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 2; done",
+      "mkdir -p /opt/searxng",
+      "cat > /opt/searxng/docker-compose.yml <<'COMPOSE'\nservices:\n  searxng:\n    image: docker.io/searxng/searxng:latest\n    container_name: searxng\n    restart: unless-stopped\n    ports:\n      - \"80:8080\"\n    volumes:\n      - ./settings:/etc/searxng\n    environment:\n      - SEARXNG_BASE_URL=https://search.catlan.net/\nCOMPOSE",
+      "cd /opt/searxng && docker compose up -d",
+    ]
   }
 
   lifecycle {
