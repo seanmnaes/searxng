@@ -32,6 +32,11 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
+provider "cloudflare" {
+  alias             = "origin_ca"
+  api_user_service_key = var.cloudflare_origin_ca_key
+}
+
 data "linode_images" "alpine" {
   latest = true
 
@@ -69,6 +74,7 @@ resource "tls_cert_request" "origin" {
 }
 
 resource "cloudflare_origin_ca_certificate" "searxng" {
+  provider           = cloudflare.origin_ca
   csr                = tls_cert_request.origin.cert_request_pem
   hostnames          = ["search.catlan.net"]
   request_type       = "origin-rsa"

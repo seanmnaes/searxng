@@ -37,7 +37,7 @@ jobs:
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
           TF_VAR_deploy_timestamp: ${{ github.run_id }}
-          CLOUDFLARE_API_USER_SERVICE_KEY: ${{ secrets.CF_ORIGIN_CA_KEY }}
+          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
 
       - name: Terraform Apply
         run: terraform apply -auto-approve -no-color -lock-timeout=5m
@@ -48,4 +48,4 @@ jobs:
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
           TF_VAR_deploy_timestamp: ${{ github.run_id }}
-          CLOUDFLARE_API_USER_SERVICE_KEY: ${{ secrets.CF_ORIGIN_CA_KEY }}
+          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}

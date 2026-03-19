@@ -25,3 +25,9 @@ variable "ssh_public_key" {
   description = "SSH public key for access to the Linode instance"
   type        = string
 }
+
+variable "cloudflare_origin_ca_key" {
+  description = "Cloudflare Origin CA key"
+  type        = string
+  sensitive   = true
+}
