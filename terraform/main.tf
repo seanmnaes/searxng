@@ -58,8 +58,35 @@ resource "linode_instance" "searxng" {
   authorized_keys = [var.ssh_public_key]
   firewall_id     = 3495544
 
-  stackscript_id = linode_stackscript.searxng_setup.id
-  stackscript_data = {}
+  metadata {
+    user_data = base64encode(<<-EOF
+      #!/bin/ash
+      apk update
+      apk add docker docker-compose openrc
+      rc-update add docker default
+      service docker start
+      sleep 5
+
+      mkdir -p /opt/searxng
+      cat > /opt/searxng/docker-compose.yml <<'COMPOSE'
+      services:
+        searxng:
+          image: docker.io/searxng/searxng:latest
+          container_name: searxng
+          restart: unless-stopped
+          ports:
+            - "80:8080"
+          volumes:
+            - ./settings:/etc/searxng
+          environment:
+            - SEARXNG_BASE_URL=https://search.catlan.net/
+      COMPOSE
+
+      cd /opt/searxng
+      docker compose up -d
+    EOF
+    )
+  }
 
   lifecycle {
     replace_triggered_by = [terraform_data.redeploy]
@@ -68,40 +95,6 @@ resource "linode_instance" "searxng" {
 
 resource "terraform_data" "redeploy" {
   input = var.deploy_timestamp
-}
-
-resource "linode_stackscript" "searxng_setup" {
-  label       = "searxng-docker-setup"
-  description = "Install Docker and run SearXNG"
-  images      = [data.linode_images.alpine.images[0].id]
-  script      = <<-EOF
-    #!/bin/ash
-    apk update
-    apk add docker docker-compose openrc
-    rc-update add docker default
-    service docker start
-
-    # Wait for Docker to be ready
-    sleep 5
-
-    mkdir -p /opt/searxng
-    cat > /opt/searxng/docker-compose.yml <<'COMPOSE'
-    services:
-      searxng:
-        image: docker.io/searxng/searxng:latest
-        container_name: searxng
-        restart: unless-stopped
-        ports:
-          - "80:8080"
-        volumes:
-          - ./settings:/etc/searxng
-        environment:
-          - SEARXNG_BASE_URL=https://search.catlan.net/
-    COMPOSE
-
-    cd /opt/searxng
-    docker compose up -d
-  EOF
 }
 
 resource "cloudflare_record" "searxng" {
