@@ -1,0 +1,113 @@
+terraform {
+  cloud {
+    organization = "catlan"
+    workspaces {
+      name = "searxng-pipeline"
+    }
+  }
+
+  required_providers {
+    linode = {
+      source  = "linode/linode"
+      version = "~> 2.0"
+    }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "~> 4.0"
+    }
+  }
+
+  required_version = ">= 1.5.0"
+}
+
+provider "linode" {
+  token = var.linode_token
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
+}
+
+data "linode_images" "alpine" {
+  latest = true
+
+  filter {
+    name   = "label"
+    values = ["Alpine 3%"]
+  }
+
+  filter {
+    name   = "is_public"
+    values = ["true"]
+  }
+}
+
+variable "deploy_timestamp" {
+  description = "Timestamp to force redeployment"
+  type        = string
+  default     = ""
+}
+
+resource "linode_instance" "searxng" {
+  label           = "searxng"
+  region          = "us-sea"
+  type            = "g6-nanode-1"
+  image           = data.linode_images.alpine.images[0].id
+  root_pass       = var.root_password
+  authorized_keys = [var.ssh_public_key]
+  firewall_id     = 3495544
+
+  stackscript_id = linode_stackscript.searxng_setup.id
+  stackscript_data = {}
+
+  lifecycle {
+    replace_triggered_by = [terraform_data.redeploy]
+  }
+}
+
+resource "terraform_data" "redeploy" {
+  input = var.deploy_timestamp
+}
+
+resource "linode_stackscript" "searxng_setup" {
+  label       = "searxng-docker-setup"
+  description = "Install Docker and run SearXNG"
+  images      = [data.linode_images.alpine.images[0].id]
+  script      = <<-EOF
+    #!/bin/ash
+    apk update
+    apk add docker docker-compose openrc
+    rc-update add docker default
+    service docker start
+
+    # Wait for Docker to be ready
+    sleep 5
+
+    mkdir -p /opt/searxng
+    cat > /opt/searxng/docker-compose.yml <<'COMPOSE'
+    services:
+      searxng:
+        image: docker.io/searxng/searxng:latest
+        container_name: searxng
+        restart: unless-stopped
+        ports:
+          - "80:8080"
+        volumes:
+          - ./settings:/etc/searxng
+        environment:
+          - SEARXNG_BASE_URL=https://search.catlan.net/
+    COMPOSE
+
+    cd /opt/searxng
+    docker compose up -d
+  EOF
+}
+
+resource "cloudflare_record" "searxng" {
+  zone_id = var.cloudflare_zone_id
+  name    = "search"
+  content = linode_instance.searxng.ip_address
+  type    = "A"
+  ttl     = 300
+  proxied = true
+}
