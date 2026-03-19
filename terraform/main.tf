@@ -97,8 +97,12 @@ resource "linode_stackscript" "searxng_setup" {
 
     # Write TLS cert and key
     mkdir -p /etc/nginx/ssl
-    echo "$$ORIGIN_CERT" > /etc/nginx/ssl/origin.pem
-    echo "$$ORIGIN_KEY" > /etc/nginx/ssl/origin.key
+    cat <<CERT > /etc/nginx/ssl/origin.pem
+    $$ORIGIN_CERT
+    CERT
+    cat <<KEY > /etc/nginx/ssl/origin.key
+    $$ORIGIN_KEY
+    KEY
     chmod 600 /etc/nginx/ssl/origin.key
 
     # Configure nginx as TLS reverse proxy
@@ -112,10 +116,10 @@ resource "linode_stackscript" "searxng_setup" {
 
         location / {
             proxy_pass http://127.0.0.1:8080;
-            proxy_set_header Host $$host;
-            proxy_set_header X-Real-IP $$remote_addr;
-            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $$scheme;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
         }
     }
     NGINX
@@ -123,17 +127,15 @@ resource "linode_stackscript" "searxng_setup" {
     # Remove default nginx config
     rm -f /etc/nginx/http.d/default.conf
 
-    # Start nginx
-    rc-update add nginx default
-    service nginx start
-
-    # Start Docker and SearXNG
+    # Start Docker and SearXNG first (nginx needs the cert files to be valid)
     rc-update add docker default
     service docker start
 
-    for i in $$(seq 1 30); do
+    i=0
+    while [ $$i -lt 30 ]; do
       docker info >/dev/null 2>&1 && break
       sleep 2
+      i=$$((i + 1))
     done
 
     mkdir -p /opt/searxng
@@ -153,6 +155,11 @@ resource "linode_stackscript" "searxng_setup" {
 
     cd /opt/searxng
     docker compose up -d
+
+    # Start nginx after everything is ready
+    rc-update add nginx default
+    service nginx start
+  EOF
   EOF
 }
 
