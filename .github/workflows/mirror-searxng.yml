@@ -1,0 +1,19 @@
+# .github/workflows/mirror-searxng.yml
+name: Mirror SearXNG
+on:
+  schedule:
+    - cron: '0 0 * * *'  # daily
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Mirror image
+        run: |
+          docker pull docker.io/searxng/searxng:latest
+          docker tag searxng/searxng:latest ghcr.io/${{ github.repository_owner }}/searxng:latest
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker push ghcr.io/${{ github.repository_owner }}/searxng:latest
