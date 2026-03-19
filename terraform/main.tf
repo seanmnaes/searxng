@@ -81,7 +81,7 @@ resource "linode_stackscript" "searxng_setup" {
   label       = "searxng-docker-setup"
   description = "Install Docker, nginx, and run SearXNG with TLS"
   images      = [data.linode_images.alpine.images[0].id]
-  script      = <<-'EOF'
+  script      = <<-EOF
     #!/bin/ash
     # <UDF name="origin_cert" label="Origin CA Certificate" />
     # <UDF name="origin_key" label="Origin CA Private Key" />
@@ -91,8 +91,8 @@ resource "linode_stackscript" "searxng_setup" {
 
     # Write TLS cert and key
     mkdir -p /etc/nginx/ssl
-    echo "$ORIGIN_CERT" > /etc/nginx/ssl/origin.pem
-    echo "$ORIGIN_KEY" > /etc/nginx/ssl/origin.key
+    echo "$$ORIGIN_CERT" > /etc/nginx/ssl/origin.pem
+    echo "$$ORIGIN_KEY" > /etc/nginx/ssl/origin.key
     chmod 600 /etc/nginx/ssl/origin.key
 
     # Configure nginx as TLS reverse proxy
@@ -106,10 +106,10 @@ resource "linode_stackscript" "searxng_setup" {
 
         location / {
             proxy_pass http://127.0.0.1:8080;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header Host $$host;
+            proxy_set_header X-Real-IP $$remote_addr;
+            proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $$scheme;
         }
     }
     NGINX
@@ -125,7 +125,7 @@ resource "linode_stackscript" "searxng_setup" {
     rc-update add docker default
     service docker start
 
-    for i in $(seq 1 30); do
+    for i in $$(seq 1 30); do
       docker info >/dev/null 2>&1 && break
       sleep 2
     done
