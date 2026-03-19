@@ -87,7 +87,7 @@ resource "linode_stackscript" "searxng_setup" {
   label       = "searxng-docker-setup"
   description = "Install Docker, nginx, and run SearXNG with TLS"
   images      = [data.linode_images.alpine.images[0].id]
-  script      = <<-EOF
+  script      = <<-SCRIPT
     #!/bin/ash
     # <UDF name="origin_cert" label="Origin CA Certificate" />
     # <UDF name="origin_key" label="Origin CA Private Key" />
@@ -97,12 +97,8 @@ resource "linode_stackscript" "searxng_setup" {
 
     # Write TLS cert and key
     mkdir -p /etc/nginx/ssl
-    cat <<CERT > /etc/nginx/ssl/origin.pem
-    $$ORIGIN_CERT
-    CERT
-    cat <<KEY > /etc/nginx/ssl/origin.key
-    $$ORIGIN_KEY
-    KEY
+    printf '%s\n' "$$ORIGIN_CERT" > /etc/nginx/ssl/origin.pem
+    printf '%s\n' "$$ORIGIN_KEY" > /etc/nginx/ssl/origin.key
     chmod 600 /etc/nginx/ssl/origin.key
 
     # Configure nginx as TLS reverse proxy
@@ -127,7 +123,7 @@ resource "linode_stackscript" "searxng_setup" {
     # Remove default nginx config
     rm -f /etc/nginx/http.d/default.conf
 
-    # Start Docker and SearXNG first (nginx needs the cert files to be valid)
+    # Start Docker and SearXNG first
     rc-update add docker default
     service docker start
 
@@ -159,8 +155,7 @@ resource "linode_stackscript" "searxng_setup" {
     # Start nginx after everything is ready
     rc-update add nginx default
     service nginx start
-  EOF
-  EOF
+  SCRIPT
 }
 
 # --- Linode Instance ---
