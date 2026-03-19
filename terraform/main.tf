@@ -63,9 +63,15 @@ resource "linode_instance" "searxng" {
       #!/bin/ash
       apk update
       apk add docker docker-compose openrc
+
       rc-update add docker default
       service docker start
-      sleep 5
+
+      # Wait for Docker socket to be ready
+      for i in $(seq 1 30); do
+        docker info >/dev/null 2>&1 && break
+        sleep 2
+      done
 
       mkdir -p /opt/searxng
       cat > /opt/searxng/docker-compose.yml <<'COMPOSE'
