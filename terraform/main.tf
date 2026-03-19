@@ -1,6 +1,6 @@
 terraform {
   cloud {
-    organization = "catlan"
+    organization = "CatLan"
     workspaces {
       name = "searxng-pipeline"
     }
