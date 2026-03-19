@@ -102,6 +102,6 @@ resource "cloudflare_record" "searxng" {
   name    = "search"
   content = tolist(linode_instance.searxng.ipv4)[0]
   type    = "A"
-  ttl     = 300
+  ttl     = 1
   proxied = true
 }
