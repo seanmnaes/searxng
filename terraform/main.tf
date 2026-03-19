@@ -107,7 +107,7 @@ resource "linode_stackscript" "searxng_setup" {
 resource "cloudflare_record" "searxng" {
   zone_id = var.cloudflare_zone_id
   name    = "search"
-  content = linode_instance.searxng.ipv4[0]
+  content = tolist(linode_instance.searxng.ipv4)[0]
   type    = "A"
   ttl     = 300
   proxied = true
