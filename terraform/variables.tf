@@ -37,11 +37,6 @@ variable "domain" {
   type        = string
 }
 
-variable "linode_firewall_id" {
-  description = "Linode firewall ID to attach to the instance"
-  type        = number
-}
-
 variable "deploy_timestamp" {
   description = "Timestamp to force redeployment (set automatically by CI)"
   type        = string

@@ -168,6 +168,29 @@ resource "linode_stackscript" "searxng_setup" {
   ])
 }
 
+# --- Cloudflare IP Ranges ---
+
+data "cloudflare_ip_ranges" "cloudflare" {}
+
+# --- Linode Firewall ---
+
+resource "linode_firewall" "searxng" {
+  label = "cf-proxy"
+
+  inbound {
+    label    = "allow-cf-https"
+    action   = "ACCEPT"
+    protocol = "TCP"
+    ports    = "443"
+    ipv6s    = data.cloudflare_ip_ranges.cloudflare.ipv6_cidr_blocks
+  }
+
+  inbound_policy  = "DROP"
+  outbound_policy = "ACCEPT"
+
+  linodes = [linode_instance.searxng.id]
+}
+
 # --- Linode Instance ---
 
 resource "linode_instance" "searxng" {
@@ -177,7 +200,6 @@ resource "linode_instance" "searxng" {
   image           = data.linode_images.alpine.images[0].id
   root_pass       = var.root_password
   authorized_keys = [var.ssh_public_key]
-  firewall_id     = var.linode_firewall_id
 
   stackscript_id   = linode_stackscript.searxng_setup.id
   stackscript_data = {}

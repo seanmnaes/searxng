@@ -51,7 +51,6 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 |---|---|---|
 | `CF_ZONE_ID` | Cloudflare zone ID | `a1b2c3...` |
 | `DOMAIN` | Full domain for SearXNG | `search.example.com` |
-| `LINODE_FIREWALL_ID` | Linode firewall ID | `1234567` |
 | `TF_CLOUD_ORG` | Terraform Cloud organization name | `my-org` |
 | `TF_CLOUD_WORKSPACE` | Terraform Cloud workspace name | `searxng-pipeline` |
 
@@ -65,8 +64,9 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
    - Writes the Origin CA cert/key for TLS
    - Configures nginx as a TLS reverse proxy on port 443
    - Starts SearXNG on localhost:8080
-5. A **Cloudflare DNS** `A` record points your domain to the instance IP (proxied)
-6. Daily redeploy ensures the latest SearXNG and Alpine images
+5. A **Linode Firewall** is created allowing only Cloudflare IPv6 ranges on port 443
+6. A **Cloudflare DNS** `AAAA` record points your domain to the instance IPv6 (proxied)
+7. Daily redeploy ensures the latest SearXNG and Alpine images, and updates Cloudflare IP ranges
 
 ## Deployment
 
@@ -95,7 +95,6 @@ export TF_VAR_cloudflare_zone_id="..."
 export TF_VAR_root_password="..."
 export TF_VAR_ssh_public_key="ssh-ed25519 ..."
 export TF_VAR_domain="search.example.com"
-export TF_VAR_linode_firewall_id="1234567"
 export TF_VAR_tf_cloud_organization="my-org"
 export TF_VAR_tf_cloud_workspace="searxng-pipeline"
 

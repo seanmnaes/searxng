@@ -39,7 +39,6 @@ jobs:
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
           TF_VAR_domain: ${{ vars.DOMAIN }}
-          TF_VAR_linode_firewall_id: ${{ vars.LINODE_FIREWALL_ID }}
           TF_VAR_deploy_timestamp: ${{ github.run_id }}
 
       - name: Terraform Apply
@@ -54,5 +53,4 @@ jobs:
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
           TF_VAR_domain: ${{ vars.DOMAIN }}
-          TF_VAR_linode_firewall_id: ${{ vars.LINODE_FIREWALL_ID }}
           TF_VAR_deploy_timestamp: ${{ github.run_id }}
