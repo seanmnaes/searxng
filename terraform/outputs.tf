@@ -5,5 +5,5 @@ output "linode_ip" {
 
 output "searxng_url" {
   description = "URL for SearXNG"
-  value       = "https://search.catlan.net"
+  value       = "https://${var.domain}"
 }

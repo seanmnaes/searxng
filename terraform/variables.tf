@@ -10,6 +10,12 @@ variable "cloudflare_api_token" {
   sensitive   = true
 }
 
+variable "cloudflare_origin_ca_key" {
+  description = "Cloudflare Origin CA key"
+  type        = string
+  sensitive   = true
+}
+
 variable "cloudflare_zone_id" {
   description = "Cloudflare zone ID"
   type        = string
@@ -26,8 +32,18 @@ variable "ssh_public_key" {
   type        = string
 }
 
-variable "cloudflare_origin_ca_key" {
-  description = "Cloudflare Origin CA key"
+variable "domain" {
+  description = "Domain name for SearXNG (e.g., search.example.com)"
   type        = string
-  sensitive   = true
+}
+
+variable "linode_firewall_id" {
+  description = "Linode firewall ID to attach to the instance"
+  type        = number
+}
+
+variable "deploy_timestamp" {
+  description = "Timestamp to force redeployment (set automatically by CI)"
+  type        = string
+  default     = ""
 }

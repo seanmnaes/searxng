@@ -1,10 +1,5 @@
 terraform {
-  cloud {
-    organization = "CatLan"
-    workspaces {
-      name = "searxng-pipeline"
-    }
-  }
+  cloud {}
 
   required_providers {
     linode = {
@@ -33,9 +28,11 @@ provider "cloudflare" {
 }
 
 provider "cloudflare" {
-  alias             = "origin_ca"
+  alias                = "origin_ca"
   api_user_service_key = var.cloudflare_origin_ca_key
 }
+
+# --- Latest Alpine Image ---
 
 data "linode_images" "alpine" {
   latest = true
@@ -52,13 +49,11 @@ data "linode_images" "alpine" {
   }
 }
 
-variable "deploy_timestamp" {
-  description = "Timestamp to force redeployment"
-  type        = string
-  default     = ""
-}
-
 # --- Origin CA Certificate ---
+
+locals {
+  subdomain = split(".", var.domain)[0]
+}
 
 resource "tls_private_key" "origin" {
   algorithm = "RSA"
@@ -69,16 +64,16 @@ resource "tls_cert_request" "origin" {
   private_key_pem = tls_private_key.origin.private_key_pem
 
   subject {
-    common_name = "search.catlan.net"
+    common_name = var.domain
   }
 }
 
 resource "cloudflare_origin_ca_certificate" "searxng" {
   provider           = cloudflare.origin_ca
   csr                = tls_cert_request.origin.cert_request_pem
-  hostnames          = ["search.catlan.net"]
+  hostnames          = [var.domain]
   request_type       = "origin-rsa"
-  requested_validity = 5475 # 15 years
+  requested_validity = 5475
 }
 
 # --- StackScript ---
@@ -102,7 +97,7 @@ resource "linode_stackscript" "searxng_setup" {
     "cat > /etc/nginx/http.d/searxng.conf <<'NGINX'",
     "server {",
     "    listen 443 ssl;",
-    "    server_name search.catlan.net;",
+    "    server_name ${var.domain};",
     "    ssl_certificate /etc/nginx/ssl/origin.pem;",
     "    ssl_certificate_key /etc/nginx/ssl/origin.key;",
     "    location / {",
@@ -135,7 +130,7 @@ resource "linode_stackscript" "searxng_setup" {
     "    volumes:",
     "      - ./settings:/etc/searxng",
     "    environment:",
-    "      - SEARXNG_BASE_URL=https://search.catlan.net/",
+    "      - SEARXNG_BASE_URL=https://${var.domain}/",
     "COMPOSE",
     "",
     "cd /opt/searxng",
@@ -156,9 +151,9 @@ resource "linode_instance" "searxng" {
   image           = data.linode_images.alpine.images[0].id
   root_pass       = var.root_password
   authorized_keys = [var.ssh_public_key]
-  firewall_id     = 3495544
+  firewall_id     = var.linode_firewall_id
 
-  stackscript_id = linode_stackscript.searxng_setup.id
+  stackscript_id   = linode_stackscript.searxng_setup.id
   stackscript_data = {}
 
   lifecycle {
@@ -174,7 +169,7 @@ resource "terraform_data" "redeploy" {
 
 resource "cloudflare_record" "searxng" {
   zone_id = var.cloudflare_zone_id
-  name    = "search"
+  name    = local.subdomain
   content = tolist(linode_instance.searxng.ipv4)[0]
   type    = "A"
   ttl     = 1

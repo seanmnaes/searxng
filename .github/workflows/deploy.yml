@@ -7,10 +7,6 @@ on:
     - cron: '0 11 * * *'  # Daily at 04:00 PDT (11:00 UTC)
   workflow_dispatch:
 
-env:
-  TF_CLOUD_ORGANIZATION: "catlan"
-  TF_WORKSPACE: "searxng-pipeline"
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -27,25 +23,36 @@ jobs:
 
       - name: Terraform Init
         run: terraform init
+        env:
+          TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORG }}
+          TF_WORKSPACE: ${{ vars.TF_CLOUD_WORKSPACE }}
 
       - name: Terraform Plan
         run: terraform plan -no-color -lock-timeout=5m
         env:
+          TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORG }}
+          TF_WORKSPACE: ${{ vars.TF_CLOUD_WORKSPACE }}
           TF_VAR_linode_token: ${{ secrets.LI_API_TOKEN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CF_API_TOKEN }}
+          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
           TF_VAR_cloudflare_zone_id: ${{ vars.CF_ZONE_ID }}
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_VAR_domain: ${{ vars.DOMAIN }}
+          TF_VAR_linode_firewall_id: ${{ vars.LINODE_FIREWALL_ID }}
           TF_VAR_deploy_timestamp: ${{ github.run_id }}
-          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
 
       - name: Terraform Apply
         run: terraform apply -auto-approve -no-color -lock-timeout=5m
         env:
+          TF_CLOUD_ORGANIZATION: ${{ vars.TF_CLOUD_ORG }}
+          TF_WORKSPACE: ${{ vars.TF_CLOUD_WORKSPACE }}
           TF_VAR_linode_token: ${{ secrets.LI_API_TOKEN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CF_API_TOKEN }}
+          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
           TF_VAR_cloudflare_zone_id: ${{ vars.CF_ZONE_ID }}
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          TF_VAR_domain: ${{ vars.DOMAIN }}
+          TF_VAR_linode_firewall_id: ${{ vars.LINODE_FIREWALL_ID }}
           TF_VAR_deploy_timestamp: ${{ github.run_id }}
-          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
