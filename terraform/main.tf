@@ -95,10 +95,10 @@ resource "linode_stackscript" "searxng_setup" {
     apk update
     apk add docker docker-compose openrc nginx
 
-    # Write TLS cert and key
+    # Write TLS cert and key (base64 encoded to preserve newlines)
     mkdir -p /etc/nginx/ssl
-    printf '%s\n' "$$ORIGIN_CERT" > /etc/nginx/ssl/origin.pem
-    printf '%s\n' "$$ORIGIN_KEY" > /etc/nginx/ssl/origin.key
+    echo "$$ORIGIN_CERT" | base64 -d > /etc/nginx/ssl/origin.pem
+    echo "$$ORIGIN_KEY" | base64 -d > /etc/nginx/ssl/origin.key
     chmod 600 /etc/nginx/ssl/origin.key
 
     # Configure nginx as TLS reverse proxy
@@ -169,8 +169,8 @@ resource "linode_instance" "searxng" {
 
   stackscript_id = linode_stackscript.searxng_setup.id
   stackscript_data = {
-    origin_cert = cloudflare_origin_ca_certificate.searxng.certificate
-    origin_key  = tls_private_key.origin.private_key_pem
+    origin_cert = base64encode(cloudflare_origin_ca_certificate.searxng.certificate)
+    origin_key  = base64encode(tls_private_key.origin.private_key_pem)
   }
 
   lifecycle {
