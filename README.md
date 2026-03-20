@@ -43,7 +43,6 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 | `CF_ORIGIN_CA_KEY` | Cloudflare Origin CA key ([Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens)) |
 | `TF_API_TOKEN` | Terraform Cloud API token |
 | `LINODE_ROOT_PASSWORD` | Root password for the Linode instance |
-| `SSH_PUBLIC_KEY` | SSH public key for instance access |
 
 ### GitHub Variables
 
@@ -93,7 +92,6 @@ export TF_VAR_cloudflare_api_token="..."
 export TF_VAR_cloudflare_origin_ca_key="..."
 export TF_VAR_cloudflare_zone_id="..."
 export TF_VAR_root_password="..."
-export TF_VAR_ssh_public_key="ssh-ed25519 ..."
 export TF_VAR_domain="search.example.com"
 export TF_VAR_tf_cloud_organization="my-org"
 export TF_VAR_tf_cloud_workspace="searxng-pipeline"

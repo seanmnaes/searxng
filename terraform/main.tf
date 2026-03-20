@@ -199,7 +199,6 @@ resource "linode_instance" "searxng" {
   type            = "g6-nanode-1"
   image           = data.linode_images.alpine.images[0].id
   root_pass       = var.root_password
-  authorized_keys = [var.ssh_public_key]
 
   stackscript_id   = linode_stackscript.searxng_setup.id
   stackscript_data = {}

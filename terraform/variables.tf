@@ -27,11 +27,6 @@ variable "root_password" {
   sensitive   = true
 }
 
-variable "ssh_public_key" {
-  description = "SSH public key for access to the Linode instance"
-  type        = string
-}
-
 variable "domain" {
   description = "Domain name for SearXNG (e.g., search.example.com)"
   type        = string
