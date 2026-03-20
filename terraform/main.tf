@@ -182,7 +182,7 @@ resource "linode_firewall" "searxng" {
     action   = "ACCEPT"
     protocol = "TCP"
     ports    = "443"
-    ipv6s    = data.cloudflare_ip_ranges.cloudflare.ipv6_cidr_blocks
+    ipv6     = data.cloudflare_ip_ranges.cloudflare.ipv6_cidr_blocks
   }
 
   inbound_policy  = "DROP"
