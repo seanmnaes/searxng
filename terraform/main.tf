@@ -97,6 +97,7 @@ resource "linode_stackscript" "searxng_setup" {
     "cat > /etc/nginx/http.d/searxng.conf <<'NGINX'",
     "server {",
     "    listen 443 ssl;",
+    "    listen [::]:443 ssl;",
     "    server_name ${var.domain};",
     "    ssl_certificate /etc/nginx/ssl/origin.pem;",
     "    ssl_certificate_key /etc/nginx/ssl/origin.key;",
@@ -195,8 +196,8 @@ resource "terraform_data" "redeploy" {
 resource "cloudflare_record" "searxng" {
   zone_id = var.cloudflare_zone_id
   name    = local.subdomain
-  content = tolist(linode_instance.searxng.ipv4)[0]
-  type    = "A"
+  content = trimsuffix(linode_instance.searxng.ipv6, "/128")
+  type    = "AAAA"
   ttl     = 1
   proxied = true
 }
