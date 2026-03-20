@@ -87,73 +87,64 @@ resource "linode_stackscript" "searxng_setup" {
   label       = "searxng-docker-setup"
   description = "Install Docker, nginx, and run SearXNG with TLS"
   images      = [data.linode_images.alpine.images[0].id]
-  script      = <<-SCRIPT
-    #!/bin/ash
-    # <UDF name="origin_cert" label="Origin CA Certificate" />
-    # <UDF name="origin_key" label="Origin CA Private Key" />
-
-    apk update
-    apk add docker docker-compose openrc nginx
-
-    # Write TLS cert and key (base64 encoded to preserve newlines)
-    mkdir -p /etc/nginx/ssl
-    echo "$$ORIGIN_CERT" | base64 -d > /etc/nginx/ssl/origin.pem
-    echo "$$ORIGIN_KEY" | base64 -d > /etc/nginx/ssl/origin.key
-    chmod 600 /etc/nginx/ssl/origin.key
-
-    # Configure nginx as TLS reverse proxy
-    cat > /etc/nginx/http.d/searxng.conf <<'NGINX'
-    server {
-        listen 443 ssl;
-        server_name search.catlan.net;
-
-        ssl_certificate /etc/nginx/ssl/origin.pem;
-        ssl_certificate_key /etc/nginx/ssl/origin.key;
-
-        location / {
-            proxy_pass http://127.0.0.1:8080;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-    NGINX
-
-    # Remove default nginx config
-    rm -f /etc/nginx/http.d/default.conf
-
-    # Start Docker and SearXNG first
-    rc-update add docker default
-    service docker start
-
-    sleep 10
-    while ! docker info >/dev/null 2>&1; do
-      sleep 2
-    done
-
-    mkdir -p /opt/searxng
-    cat > /opt/searxng/docker-compose.yml <<'COMPOSE'
-    services:
-      searxng:
-        image: docker.io/searxng/searxng:latest
-        container_name: searxng
-        restart: unless-stopped
-        ports:
-          - "127.0.0.1:8080:8080"
-        volumes:
-          - ./settings:/etc/searxng
-        environment:
-          - SEARXNG_BASE_URL=https://search.catlan.net/
-    COMPOSE
-
-    cd /opt/searxng
-    docker compose up -d
-
-    # Start nginx after everything is ready
-    rc-update add nginx default
-    service nginx start
-  SCRIPT
+  script = join("\n", [
+    "#!/bin/ash",
+    "apk update",
+    "apk add docker docker-compose openrc nginx",
+    "",
+    "# Write TLS cert and key",
+    "mkdir -p /etc/nginx/ssl",
+    "echo '${base64encode(cloudflare_origin_ca_certificate.searxng.certificate)}' | base64 -d > /etc/nginx/ssl/origin.pem",
+    "echo '${base64encode(tls_private_key.origin.private_key_pem)}' | base64 -d > /etc/nginx/ssl/origin.key",
+    "chmod 600 /etc/nginx/ssl/origin.key",
+    "",
+    "# Configure nginx as TLS reverse proxy",
+    "cat > /etc/nginx/http.d/searxng.conf <<'NGINX'",
+    "server {",
+    "    listen 443 ssl;",
+    "    server_name search.catlan.net;",
+    "    ssl_certificate /etc/nginx/ssl/origin.pem;",
+    "    ssl_certificate_key /etc/nginx/ssl/origin.key;",
+    "    location / {",
+    "        proxy_pass http://127.0.0.1:8080;",
+    "        proxy_set_header Host $host;",
+    "        proxy_set_header X-Real-IP $remote_addr;",
+    "        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+    "        proxy_set_header X-Forwarded-Proto $scheme;",
+    "    }",
+    "}",
+    "NGINX",
+    "",
+    "rm -f /etc/nginx/http.d/default.conf",
+    "",
+    "# Start Docker and SearXNG",
+    "rc-update add docker default",
+    "service docker start",
+    "sleep 10",
+    "while ! docker info >/dev/null 2>&1; do sleep 2; done",
+    "",
+    "mkdir -p /opt/searxng",
+    "cat > /opt/searxng/docker-compose.yml <<'COMPOSE'",
+    "services:",
+    "  searxng:",
+    "    image: docker.io/searxng/searxng:latest",
+    "    container_name: searxng",
+    "    restart: unless-stopped",
+    "    ports:",
+    "      - \"127.0.0.1:8080:8080\"",
+    "    volumes:",
+    "      - ./settings:/etc/searxng",
+    "    environment:",
+    "      - SEARXNG_BASE_URL=https://search.catlan.net/",
+    "COMPOSE",
+    "",
+    "cd /opt/searxng",
+    "docker compose up -d",
+    "",
+    "# Start nginx after everything is ready",
+    "rc-update add nginx default",
+    "service nginx start",
+  ])
 }
 
 # --- Linode Instance ---
@@ -168,10 +159,7 @@ resource "linode_instance" "searxng" {
   firewall_id     = 3495544
 
   stackscript_id = linode_stackscript.searxng_setup.id
-  stackscript_data = {
-    origin_cert = base64encode(cloudflare_origin_ca_certificate.searxng.certificate)
-    origin_key  = base64encode(tls_private_key.origin.private_key_pem)
-  }
+  stackscript_data = {}
 
   lifecycle {
     replace_triggered_by = [terraform_data.redeploy]
