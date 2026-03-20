@@ -127,11 +127,9 @@ resource "linode_stackscript" "searxng_setup" {
     rc-update add docker default
     service docker start
 
-    i=0
-    while [ $$i -lt 30 ]; do
-      docker info >/dev/null 2>&1 && break
+    sleep 10
+    while ! docker info >/dev/null 2>&1; do
       sleep 2
-      i=$$((i + 1))
     done
 
     mkdir -p /opt/searxng
