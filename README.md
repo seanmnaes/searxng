@@ -45,7 +45,7 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 | `CF_ORIGIN_CA_KEY` | Cloudflare Origin CA key ([Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens)) |
 | `TF_API_TOKEN` | Terraform Cloud API token |
 | `LINODE_ROOT_PASSWORD` | Root password for the Linode instance |
-| `GH_PAT` | GitHub Personal Access Token with `repo` scope (for secret rotation) |
+| `GH_APP_PRIVATE_KEY` | GitHub App private key (for secret rotation) |
 
 ### GitHub Variables
 
@@ -54,6 +54,7 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 | `CF_ZONE_ID` | Cloudflare zone ID | `a1b2c3...` |
 | `CF_API_TOKEN_ID` | Cloudflare API token ID (32-char hex, from token list) | `d4e5f6...` |
 | `TF_TEAM_ID` | Terraform Cloud team ID | `team-abc123...` |
+| `GH_APP_ID` | GitHub App ID (from app settings) | `123456` |
 | `DOMAIN` | Full domain for SearXNG | `search.example.com` |
 | `TF_CLOUD_ORG` | Terraform Cloud organization name | `my-org` |
 | `TF_CLOUD_WORKSPACE` | Terraform Cloud workspace name | `searxng-pipeline` |
