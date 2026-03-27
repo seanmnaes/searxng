@@ -42,6 +42,7 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 |---|---|
 | `LI_API_TOKEN` | Linode API token (Read/Write for Linodes, StackScripts, Events, Firewalls) |
 | `CF_API_TOKEN` | Cloudflare API token (DNS edit + SSL/Certificates edit permissions) |
+| `CF_ORIGIN_CA_KEY` | Cloudflare Origin CA key ([Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens)) |
 | `TF_API_TOKEN` | Terraform Cloud API token |
 | `LINODE_ROOT_PASSWORD` | Root password for the Linode instance |
 | `GH_PAT` | GitHub Personal Access Token with `repo` scope (for secret rotation) |
@@ -52,6 +53,7 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 |---|---|---|
 | `CF_ZONE_ID` | Cloudflare zone ID | `a1b2c3...` |
 | `CF_API_TOKEN_ID` | Cloudflare API token ID (32-char hex, from token list) | `d4e5f6...` |
+| `TF_TEAM_ID` | Terraform Cloud team ID | `team-abc123...` |
 | `DOMAIN` | Full domain for SearXNG | `search.example.com` |
 | `TF_CLOUD_ORG` | Terraform Cloud organization name | `my-org` |
 | `TF_CLOUD_WORKSPACE` | Terraform Cloud workspace name | `searxng-pipeline` |
@@ -92,6 +94,7 @@ Trigger via the GitHub Actions UI using "Run workflow" on the `Deploy SearXNG` w
 cd terraform
 export TF_VAR_linode_token="..."
 export TF_VAR_cloudflare_api_token="..."
+export TF_VAR_cloudflare_origin_ca_key="..."
 export TF_VAR_cloudflare_zone_id="..."
 export TF_VAR_root_password="..."
 export TF_VAR_domain="search.example.com"
@@ -118,8 +121,11 @@ Every 28 days, the `rotate-secrets.yml` workflow automatically rotates:
 |---|---|
 | `LI_API_TOKEN` | Creates new Linode PAT, deletes old ones |
 | `CF_API_TOKEN` | Rolls token via Cloudflare API (new value, same permissions) |
+| `TF_API_TOKEN` | Generates new team token via Terraform Cloud API (revokes old one) |
 
 After rotation, a deploy is triggered to apply the new credentials. The `CF_API_TOKEN` must have `Zone > DNS > Edit` and `Zone > SSL and Certificates > Edit` permissions, plus `User > API Tokens > Edit` to allow self-rolling.
+
+The `CF_ORIGIN_CA_KEY` is not rotated automatically — Cloudflare does not provide an API for this. It must be rotated manually via the [Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens) if needed. Note: Origin CA keys are [deprecated by Cloudflare](https://developers.cloudflare.com/fundamentals/api/get-started/ca-keys/) and will be removed September 30, 2026.
 
 ## Destroying
 
