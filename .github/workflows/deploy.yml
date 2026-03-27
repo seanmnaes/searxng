@@ -34,7 +34,6 @@ jobs:
           TF_WORKSPACE: ${{ vars.TF_CLOUD_WORKSPACE }}
           TF_VAR_linode_token: ${{ secrets.LI_API_TOKEN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CF_API_TOKEN }}
-          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
           TF_VAR_cloudflare_zone_id: ${{ vars.CF_ZONE_ID }}
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_domain: ${{ vars.DOMAIN }}
@@ -47,7 +46,6 @@ jobs:
           TF_WORKSPACE: ${{ vars.TF_CLOUD_WORKSPACE }}
           TF_VAR_linode_token: ${{ secrets.LI_API_TOKEN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CF_API_TOKEN }}
-          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
           TF_VAR_cloudflare_zone_id: ${{ vars.CF_ZONE_ID }}
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_domain: ${{ vars.DOMAIN }}

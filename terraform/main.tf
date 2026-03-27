@@ -28,8 +28,8 @@ provider "cloudflare" {
 }
 
 provider "cloudflare" {
-  alias                = "origin_ca"
-  api_user_service_key = var.cloudflare_origin_ca_key
+  alias     = "origin_ca"
+  api_token = var.cloudflare_api_token
 }
 
 # --- Latest Alpine Image ---

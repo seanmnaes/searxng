@@ -10,12 +10,14 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 - **DNS/Proxy**: Cloudflare proxied `A` record
 - **State**: Terraform Cloud
 - **CI/CD**: GitHub Actions on push to `main` + daily redeploy at 04:00 PDT
+- **Secret Rotation**: Automated every 28 days via GitHub Actions
 
 ## Project Structure
 
 ```
 ├── .github/workflows/
-│   └── deploy.yml          # GitHub Actions pipeline
+│   ├── deploy.yml          # GitHub Actions pipeline
+│   └── rotate-secrets.yml  # Secret rotation every 28 days
 └── terraform/
     ├── main.tf             # Linode instance, StackScript, Cloudflare DNS
     ├── variables.tf        # Variable definitions
@@ -38,17 +40,18 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 
 | Secret | Description |
 |---|---|
-| `LI_API_TOKEN` | Linode API token (Read/Write for Linodes, StackScripts, Events) |
-| `CF_API_TOKEN` | Cloudflare API token (DNS edit permissions) |
-| `CF_ORIGIN_CA_KEY` | Cloudflare Origin CA key ([Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens)) |
+| `LI_API_TOKEN` | Linode API token (Read/Write for Linodes, StackScripts, Events, Firewalls) |
+| `CF_API_TOKEN` | Cloudflare API token (DNS edit + SSL/Certificates edit permissions) |
 | `TF_API_TOKEN` | Terraform Cloud API token |
 | `LINODE_ROOT_PASSWORD` | Root password for the Linode instance |
+| `GH_PAT` | GitHub Personal Access Token with `repo` scope (for secret rotation) |
 
 ### GitHub Variables
 
 | Variable | Description | Example |
 |---|---|---|
 | `CF_ZONE_ID` | Cloudflare zone ID | `a1b2c3...` |
+| `CF_API_TOKEN_ID` | Cloudflare API token ID (32-char hex, from token list) | `d4e5f6...` |
 | `DOMAIN` | Full domain for SearXNG | `search.example.com` |
 | `TF_CLOUD_ORG` | Terraform Cloud organization name | `my-org` |
 | `TF_CLOUD_WORKSPACE` | Terraform Cloud workspace name | `searxng-pipeline` |
@@ -89,7 +92,6 @@ Trigger via the GitHub Actions UI using "Run workflow" on the `Deploy SearXNG` w
 cd terraform
 export TF_VAR_linode_token="..."
 export TF_VAR_cloudflare_api_token="..."
-export TF_VAR_cloudflare_origin_ca_key="..."
 export TF_VAR_cloudflare_zone_id="..."
 export TF_VAR_root_password="..."
 export TF_VAR_domain="search.example.com"
@@ -107,6 +109,17 @@ terraform apply
 |---|---|
 | `linode_ip` | Public IP of the SearXNG instance |
 | `searxng_url` | `https://<your-domain>` |
+
+## Secret Rotation
+
+Every 28 days, the `rotate-secrets.yml` workflow automatically rotates:
+
+| Secret | Method |
+|---|---|
+| `LI_API_TOKEN` | Creates new Linode PAT, deletes old ones |
+| `CF_API_TOKEN` | Rolls token via Cloudflare API (new value, same permissions) |
+
+After rotation, a deploy is triggered to apply the new credentials. The `CF_API_TOKEN` must have `Zone > DNS > Edit` and `Zone > SSL and Certificates > Edit` permissions, plus `User > API Tokens > Edit` to allow self-rolling.
 
 ## Destroying
 
