@@ -108,7 +108,7 @@ resource "linode_stackscript" "searxng_setup" {
     "    ssl_protocols TLSv1.3;",
     "    ssl_prefer_server_ciphers off;",
     "    ssl_session_timeout 1d;",
-    "    ssl_session_cache shared:SSL:10m;",
+    "    ssl_session_cache shared:searxng_ssl:10m;",
     "    ssl_session_tickets off;",
     "    location / {",
     "        proxy_pass http://127.0.0.1:8080;",
