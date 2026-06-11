@@ -101,6 +101,9 @@ resource "linode_stackscript" "searxng_setup" {
     "    listen [::]:443 ssl;",
     "    http2 on;",
     "    server_name ${var.domain};",
+    "    server_tokens off;",
+    "    # Privacy: do not persist search queries (GET /search?q=...) or client IPs to disk.",
+    "    access_log off;",
     "    ssl_certificate /etc/nginx/ssl/origin.pem;",
     "    ssl_certificate_key /etc/nginx/ssl/origin.key;",
     "    # TLS 1.3 only. Cloudflare's edge presents TLS 1.3 cipher suites to",
@@ -110,6 +113,9 @@ resource "linode_stackscript" "searxng_setup" {
     "    ssl_session_timeout 1d;",
     "    ssl_session_cache shared:searxng_ssl:10m;",
     "    ssl_session_tickets off;",
+    "    # Clickjacking protection. SearXNG already emits X-Content-Type-Options and",
+    "    # Referrer-Policy, so they are not re-added here to avoid duplicate headers.",
+    "    add_header X-Frame-Options DENY always;",
     "    location / {",
     "        proxy_pass http://127.0.0.1:8080;",
     "        proxy_set_header Host $host;",
@@ -198,6 +204,15 @@ resource "linode_firewall" "searxng" {
   outbound_policy = "ACCEPT"
 
   linodes = [linode_instance.searxng.id]
+
+  # Guard against a successful-but-empty IP-ranges response: with inbound_policy=DROP,
+  # an empty allow list would black-hole all inbound :443 (full outage). Fail the apply instead.
+  lifecycle {
+    precondition {
+      condition     = length(data.cloudflare_ip_ranges.cloudflare.ipv6_cidrs) > 0
+      error_message = "Cloudflare IPv6 ranges are empty — refusing to apply a deny-all firewall."
+    }
+  }
 }
 
 # --- Linode Instance ---

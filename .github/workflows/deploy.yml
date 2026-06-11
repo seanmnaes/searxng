@@ -7,6 +7,17 @@ on:
     - cron: '0 11 * * *'  # Daily at 04:00 PDT (11:00 UTC)
   workflow_dispatch:
 
+# Least privilege: this workflow only needs to read the repo for checkout.
+# It authenticates to Terraform/Linode/Cloudflare via dedicated secrets, not GITHUB_TOKEN.
+permissions:
+  contents: read
+
+# Queue overlapping runs (push + cron) instead of racing the Terraform Cloud state lock.
+# Never cancel an in-flight apply.
+concurrency:
+  group: deploy-searxng
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
