@@ -57,8 +57,8 @@ locals {
 }
 
 resource "tls_private_key" "origin" {
-  algorithm = "RSA"
-  rsa_bits  = 2048
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256" # Cloudflare Origin CA "origin-ecc" issues P-256 certs
 }
 
 resource "tls_cert_request" "origin" {
@@ -73,7 +73,7 @@ resource "cloudflare_origin_ca_certificate" "searxng" {
   provider           = cloudflare.origin_ca
   csr                = tls_cert_request.origin.cert_request_pem
   hostnames          = [var.domain]
-  request_type       = "origin-rsa"
+  request_type       = "origin-ecc"
   requested_validity = 5475
 }
 
@@ -97,11 +97,19 @@ resource "linode_stackscript" "searxng_setup" {
     "# Configure nginx as TLS reverse proxy",
     "cat > /etc/nginx/http.d/searxng.conf <<'NGINX'",
     "server {",
-    "    listen 443 ssl http2;",
-    "    listen [::]:443 ssl http2;",
+    "    listen 443 ssl;",
+    "    listen [::]:443 ssl;",
+    "    http2 on;",
     "    server_name ${var.domain};",
     "    ssl_certificate /etc/nginx/ssl/origin.pem;",
     "    ssl_certificate_key /etc/nginx/ssl/origin.key;",
+    "    # TLS 1.3 only. Cloudflare's edge presents TLS 1.3 cipher suites to",
+    "    # origins, so the Cloudflare->origin hop negotiates 1.3 cleanly.",
+    "    ssl_protocols TLSv1.3;",
+    "    ssl_prefer_server_ciphers off;",
+    "    ssl_session_timeout 1d;",
+    "    ssl_session_cache shared:SSL:10m;",
+    "    ssl_session_tickets off;",
     "    location / {",
     "        proxy_pass http://127.0.0.1:8080;",
     "        proxy_set_header Host $host;",
