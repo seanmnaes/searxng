@@ -253,7 +253,7 @@ resource "linode_stackscript" "searxng_setup" {
     "docker compose up -d",
     "",
     "# Wait (bounded) for SearXNG to serve before exposing :443. Probe /healthz, which is",
-    "# exempt from the limiter — probing / would get a 429 (curl's UA matches the bot regex).",
+    "# exempt from the limiter - probing / would get a 429 (curl's UA matches the bot regex).",
     "# Fail-OPEN: if it never reports healthy we still start nginx (the container has",
     "# restart:unless-stopped, so the site recovers on its own) rather than leave :443 dead.",
     "i=0",
@@ -301,7 +301,7 @@ resource "linode_firewall" "searxng" {
   lifecycle {
     precondition {
       condition     = length(data.cloudflare_ip_ranges.cloudflare.ipv6_cidrs) > 0
-      error_message = "Cloudflare IPv6 ranges are empty — refusing to apply a deny-all firewall."
+      error_message = "Cloudflare IPv6 ranges are empty - refusing to apply a deny-all firewall."
     }
   }
 }
