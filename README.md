@@ -5,11 +5,13 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 ## Architecture
 
 - **Compute**: Linode Nanode 1GB running Alpine Linux (latest)
-- **Application**: SearXNG Docker container (`docker.io/searxng/searxng:latest`)
-- **TLS**: Cloudflare Origin CA certificate with nginx reverse proxy
-- **DNS/Proxy**: Cloudflare proxied `A` record
+- **Application**: SearXNG Docker container (`docker.io/searxng/searxng:latest`) with a Valkey sidecar for the rate limiter
+- **TLS**: Cloudflare Origin CA certificate (ECDSA P-256) with nginx reverse proxy, TLS 1.3 only
+- **DNS/Proxy**: Cloudflare proxied `AAAA` record (IPv6); the origin firewall only admits Cloudflare's IPv6 ranges
+- **SSL mode**: Full (Strict), enforced in Terraform (`cloudflare_zone_setting`)
+- **Abuse protection**: SearXNG public-instance limiter backed by Valkey; nginx recovers the real client IP from Cloudflare
 - **State**: Terraform Cloud
-- **CI/CD**: GitHub Actions on push to `main` + daily redeploy at 04:00 PDT
+- **CI/CD**: GitHub Actions on push to `main` + daily redeploy at 04:00 PDT, with a post-deploy health check
 - **Secret Rotation**: Automated every 28 days via GitHub Actions
 
 ## Project Structure
@@ -33,16 +35,14 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 
 ### Cloudflare
 
-1. Set SSL/TLS mode to **Full (Strict)**
-2. Ensure your firewall allows inbound TCP port 443
+SSL/TLS mode is enforced as **Full (Strict)** by Terraform (`cloudflare_zone_setting`), so no manual dashboard step is required. The `CF_API_TOKEN` must carry the permissions listed under [GitHub Secrets](#github-secrets).
 
 ### GitHub Secrets
 
 | Secret | Description |
 |---|---|
 | `LI_API_TOKEN` | Linode API token (Read/Write for Linodes, StackScripts, Events, Firewalls) |
-| `CF_API_TOKEN` | Cloudflare API token (DNS edit + SSL/Certificates edit permissions) |
-| `CF_ORIGIN_CA_KEY` | Cloudflare Origin CA key ([Profile → API Tokens](https://dash.cloudflare.com/profile/api-tokens)) |
+| `CF_API_TOKEN` | Cloudflare API token. Permissions: `Zone > DNS > Edit`, `Zone > SSL and Certificates > Edit` (issues the Origin CA cert), `Zone > Zone Settings > Edit` (enforces Full (Strict)), and `User > API Tokens > Edit` (self-rolls during rotation) |
 | `TF_API_TOKEN` | Terraform Cloud API token |
 | `LINODE_ROOT_PASSWORD` | Root password for the Linode instance |
 | `GH_APP_PRIVATE_KEY` | GitHub App private key (for secret rotation) |
@@ -63,15 +63,17 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 
 1. **GitHub Actions** triggers on push to `main`, daily schedule, or manual dispatch
 2. **Terraform** queries the Linode API for the latest Alpine image
-3. An **Origin CA certificate** is generated for your domain
+3. An **Origin CA certificate** (ECDSA P-256) is generated for your domain, and the zone SSL mode is set to Full (Strict)
 4. A **Linode Nanode 1GB** is provisioned with a StackScript that:
-   - Installs Docker and nginx
+   - Installs Docker and nginx, and creates a swapfile
    - Writes the Origin CA cert/key for TLS
-   - Configures nginx as a TLS reverse proxy on port 443
-   - Starts SearXNG on localhost:8080
+   - Configures nginx as a TLS 1.3 reverse proxy on port 443, recovering the real client IP from Cloudflare
+   - Starts SearXNG (with the public-instance limiter) and a Valkey sidecar on localhost:8080
+   - Waits for the backend to be healthy before starting nginx
 5. A **Linode Firewall** is created allowing only Cloudflare IPv6 ranges on port 443
 6. A **Cloudflare DNS** `AAAA` record points your domain to the instance IPv6 (proxied)
-7. Daily redeploy ensures the latest SearXNG and Alpine images, and updates Cloudflare IP ranges
+7. A **health check** polls the public URL and fails the deploy if the origin never comes up
+8. Daily redeploy ensures the latest SearXNG and Alpine images, and updates Cloudflare IP ranges
 
 ## Deployment
 
@@ -95,12 +97,18 @@ Trigger via the GitHub Actions UI using "Run workflow" on the `Deploy SearXNG` w
 cd terraform
 export TF_VAR_linode_token="..."
 export TF_VAR_cloudflare_api_token="..."
-export TF_VAR_cloudflare_origin_ca_key="..."
 export TF_VAR_cloudflare_zone_id="..."
 export TF_VAR_root_password="..."
 export TF_VAR_domain="search.example.com"
-export TF_VAR_tf_cloud_organization="my-org"
-export TF_VAR_tf_cloud_workspace="searxng-pipeline"
+
+# Terraform Cloud backend (NOT TF_VAR_*; these configure the cloud {} block)
+export TF_CLOUD_ORGANIZATION="my-org"
+export TF_WORKSPACE="searxng-pipeline"
+
+# WARNING: deploy_timestamp drives replace_triggered_by. Leaving it unset (default "")
+# changes it from the CI-set github.run_id and forces a destroy/recreate of the live
+# instance on apply. Set it to the value the last CI run used to avoid that.
+export TF_VAR_deploy_timestamp="<last github.run_id>"
 
 terraform init
 terraform plan
@@ -111,7 +119,8 @@ terraform apply
 
 | Output | Description |
 |---|---|
-| `linode_ip` | Public IP of the SearXNG instance |
+| `linode_ipv6` | Public IPv6 of the instance — the operative address (the firewall only admits Cloudflare over IPv6) |
+| `linode_ip` | Public IPv4. **Non-serving**: all inbound IPv4 is dropped by the firewall; informational only |
 | `searxng_url` | `https://<your-domain>` |
 
 ## Secret Rotation
@@ -124,9 +133,9 @@ Every 28 days, the `rotate-secrets.yml` workflow automatically rotates:
 | `CF_API_TOKEN` | Rolls token via Cloudflare API (new value, same permissions) |
 | `TF_API_TOKEN` | Generates new team token via Terraform Cloud API (revokes old one) |
 
-After rotation, a deploy is triggered to apply the new credentials. The `CF_API_TOKEN` must have `Zone > DNS > Edit` and `Zone > SSL and Certificates > Edit` permissions, plus `User > API Tokens > Edit` to allow self-rolling.
+After rotation, a deploy is triggered to apply the new credentials. The `CF_API_TOKEN` must have the permissions listed under [GitHub Secrets](#github-secrets), including `User > API Tokens > Edit` to allow self-rolling.
 
-The `CF_ORIGIN_CA_KEY` is not rotated automatically — Cloudflare does not provide an API for this. It must be rotated manually via the [Cloudflare dashboard](https://dash.cloudflare.com/profile/api-tokens) if needed. Note: Origin CA keys are [deprecated by Cloudflare](https://developers.cloudflare.com/fundamentals/api/get-started/ca-keys/) and will be removed September 30, 2026.
+The Origin CA certificate is now issued using the `CF_API_TOKEN` (permission `Zone > SSL and Certificates > Edit`), not the legacy Origin CA user service key — that key is [deprecated by Cloudflare](https://developers.cloudflare.com/fundamentals/api/reference/deprecations/) and removed September 30, 2026, so it is no longer used here.
 
 ## Destroying
 

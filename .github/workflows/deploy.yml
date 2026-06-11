@@ -45,7 +45,6 @@ jobs:
           TF_WORKSPACE: ${{ vars.TF_CLOUD_WORKSPACE }}
           TF_VAR_linode_token: ${{ secrets.LI_API_TOKEN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CF_API_TOKEN }}
-          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
           TF_VAR_cloudflare_zone_id: ${{ vars.CF_ZONE_ID }}
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_domain: ${{ vars.DOMAIN }}
@@ -58,8 +57,23 @@ jobs:
           TF_WORKSPACE: ${{ vars.TF_CLOUD_WORKSPACE }}
           TF_VAR_linode_token: ${{ secrets.LI_API_TOKEN }}
           TF_VAR_cloudflare_api_token: ${{ secrets.CF_API_TOKEN }}
-          TF_VAR_cloudflare_origin_ca_key: ${{ secrets.CF_ORIGIN_CA_KEY }}
           TF_VAR_cloudflare_zone_id: ${{ vars.CF_ZONE_ID }}
           TF_VAR_root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           TF_VAR_domain: ${{ vars.DOMAIN }}
           TF_VAR_deploy_timestamp: ${{ github.run_id }}
+
+      # The instance is recreated on every apply and the StackScript boots asynchronously,
+      # so a green apply does not mean the site is up. Poll the public URL and fail the job
+      # if the origin never becomes healthy (turns a silently-broken boot into a red deploy).
+      - name: Health check
+        run: |
+          set -eu
+          URL="https://${{ vars.DOMAIN }}/"
+          for i in $(seq 1 40); do
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$URL" || echo 000)
+            echo "attempt $i: HTTP $CODE"
+            [ "$CODE" = "200" ] && { echo "origin healthy"; exit 0; }
+            sleep 15
+          done
+          echo "::error::Site did not return 200 within ~10 minutes after apply"
+          exit 1

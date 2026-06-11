@@ -28,11 +28,6 @@ provider "cloudflare" {
   api_token = var.cloudflare_api_token
 }
 
-provider "cloudflare" {
-  alias                = "origin_ca"
-  api_user_service_key = var.cloudflare_origin_ca_key
-}
-
 # --- Latest Alpine Image ---
 
 data "linode_images" "alpine" {
@@ -69,12 +64,25 @@ resource "tls_cert_request" "origin" {
   }
 }
 
+# Issued via the default provider's api_token (needs Zone > SSL and Certificates > Edit).
+# Migrated off the deprecated Origin CA user service key, which Cloudflare removes 2026-09-30.
 resource "cloudflare_origin_ca_certificate" "searxng" {
-  provider           = cloudflare.origin_ca
   csr                = tls_cert_request.origin.cert_request_pem
   hostnames          = [var.domain]
   request_type       = "origin-ecc"
   requested_validity = 5475
+}
+
+# Enforce "Full (Strict)" SSL mode as code rather than a manual dashboard toggle, so the
+# origin-cert trust model can't silently drift (Full = no origin validation; Flexible = outage).
+# depends_on ensures the origin cert is issued before the mode flips to strict.
+# Requires the api_token to have Zone > Zone Settings > Edit.
+resource "cloudflare_zone_setting" "ssl" {
+  zone_id    = var.cloudflare_zone_id
+  setting_id = "ssl"
+  value      = "strict"
+
+  depends_on = [cloudflare_origin_ca_certificate.searxng]
 }
 
 # --- StackScript ---
@@ -85,8 +93,25 @@ resource "linode_stackscript" "searxng_setup" {
   images      = [data.linode_images.alpine.images[0].id]
   script = join("\n", [
     "#!/bin/ash",
+    # Fail fast on any error or unset variable so a half-broken boot does not silently
+    # leave nginx proxying to a dead backend (which surfaces as a Cloudflare 521/502).
+    "set -eu",
+    "",
+    "log() { echo \"[stackscript] $1\"; }",
+    "",
     "apk update",
-    "apk add docker docker-compose openrc nginx",
+    "apk add docker docker-compose openrc nginx curl",
+    "",
+    "# Swap: the 1GB Nanode runs dockerd + nginx + SearXNG (+ Valkey) with image_proxy on.",
+    "# A small swapfile prevents a burst from triggering a host-wide OOM kill.",
+    "if [ ! -f /swapfile ]; then",
+    "  fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=1024",
+    "  chmod 600 /swapfile",
+    "  mkswap /swapfile",
+    "  swapon /swapfile",
+    "  echo '/swapfile none swap sw 0 0' >> /etc/fstab",
+    "  sysctl -w vm.swappiness=10",
+    "fi",
     "",
     "# Write TLS cert and key",
     "mkdir -p /etc/nginx/ssl",
@@ -116,6 +141,11 @@ resource "linode_stackscript" "searxng_setup" {
     "    # Clickjacking protection. SearXNG already emits X-Content-Type-Options and",
     "    # Referrer-Policy, so they are not re-added here to avoid duplicate headers.",
     "    add_header X-Frame-Options DENY always;",
+    "    # Recover the real client IP from Cloudflare so the SearXNG limiter keys on the",
+    "    # visitor, not the edge. CF-Connecting-IP is set by Cloudflare and trusted only",
+    "    # from Cloudflare's published ranges.",
+    join("\n", [for cidr in concat(data.cloudflare_ip_ranges.cloudflare.ipv4_cidrs, data.cloudflare_ip_ranges.cloudflare.ipv6_cidrs) : "    set_real_ip_from ${cidr};"]),
+    "    real_ip_header CF-Connecting-IP;",
     "    location / {",
     "        proxy_pass http://127.0.0.1:8080;",
     "        proxy_set_header Host $host;",
@@ -128,18 +158,29 @@ resource "linode_stackscript" "searxng_setup" {
     "",
     "rm -f /etc/nginx/http.d/default.conf",
     "",
-    "# Start Docker and SearXNG",
+    "# Start Docker and wait (bounded) for the daemon to be ready.",
     "rc-update add docker default",
     "service docker start",
-    "sleep 10",
-    "while ! docker info >/dev/null 2>&1; do sleep 2; done",
+    "i=0",
+    "while ! docker info >/dev/null 2>&1; do",
+    "  i=$((i+1))",
+    "  [ \"$i\" -gt 60 ] && { log 'docker daemon did not become ready in 120s'; exit 1; }",
+    "  sleep 2",
+    "done",
+    "log 'docker ready'",
     "",
     "mkdir -p /opt/searxng/settings",
+    # Unquoted heredoc delimiter (SETTINGS) so $(...) runs and writes a fresh random
+    # secret_key per boot. Do NOT quote it or the literal $(...) string is written.
     "cat > /opt/searxng/settings/settings.yml <<SETTINGS",
     "use_default_settings: true",
     "server:",
     "  secret_key: $(head -c 32 /dev/urandom | base64)",
     "  image_proxy: true",
+    "  # Public-instance rate limiting / bot detection. Requires a reachable Valkey,",
+    "  # else SearXNG exits on start (depends_on service_healthy below guarantees it).",
+    "  limiter: true",
+    "  public_instance: true",
     "ui:",
     "  default_theme: simple",
     "  theme_args:",
@@ -158,7 +199,21 @@ resource "linode_stackscript" "searxng_setup" {
     "plugins:",
     "  searx.plugins.infinite_scroll.SXNGPlugin:",
     "    active: true",
+    "valkey:",
+    "  url: valkey://searxng-valkey:6379/0",
     "SETTINGS",
+    "",
+    # limiter.toml: trust nginx as a proxy so X-Forwarded-For is honored. nginx reaches
+    # SearXNG over the Docker bridge, so its source falls in these private ranges.
+    "cat > /opt/searxng/settings/limiter.toml <<'LIMITER'",
+    "[botdetection]",
+    "trusted_proxies = [",
+    "  '127.0.0.0/8',",
+    "  '::1',",
+    "  '172.16.0.0/12',",
+    "  '10.0.0.0/8',",
+    "]",
+    "LIMITER",
     "",
     "cat > /opt/searxng/docker-compose.yml <<'COMPOSE'",
     "services:",
@@ -172,14 +227,44 @@ resource "linode_stackscript" "searxng_setup" {
     "      - ./settings:/etc/searxng",
     "    environment:",
     "      - SEARXNG_BASE_URL=https://${var.domain}/",
+    "    mem_limit: 512m",
+    "    depends_on:",
+    "      valkey:",
+    "        condition: service_healthy",
+    "  valkey:",
+    "    image: docker.io/valkey/valkey:9-alpine",
+    "    container_name: searxng-valkey",
+    "    command: valkey-server --save 30 1 --loglevel warning",
+    "    restart: unless-stopped",
+    "    mem_limit: 192m",
+    "    volumes:",
+    "      - valkey-data:/data",
+    "    healthcheck:",
+    "      test: [\"CMD\", \"valkey-cli\", \"ping\"]",
+    "      interval: 5s",
+    "      timeout: 3s",
+    "      retries: 5",
+    "volumes:",
+    "  valkey-data:",
     "COMPOSE",
     "",
     "cd /opt/searxng",
+    "docker compose pull",
     "docker compose up -d",
     "",
-    "# Start nginx after everything is ready",
+    "# Gate nginx on a healthy backend: poll SearXNG (bounded) before exposing :443.",
+    "i=0",
+    "while ! curl -fsS http://127.0.0.1:8080/ >/dev/null 2>&1; do",
+    "  i=$((i+1))",
+    "  [ \"$i\" -gt 60 ] && { log 'SearXNG did not become healthy in 180s'; docker compose logs --tail=50; exit 1; }",
+    "  sleep 3",
+    "done",
+    "log 'SearXNG healthy'",
+    "",
+    "# Start nginx only after the backend is confirmed up.",
     "rc-update add nginx default",
     "service nginx start",
+    "log 'boot complete'",
   ])
 }
 
