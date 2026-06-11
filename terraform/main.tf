@@ -4,11 +4,11 @@ terraform {
   required_providers {
     linode = {
       source  = "linode/linode"
-      version = "~> 2.0"
+      version = "~> 3.0"
     }
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.19" # 5.19+ ships state upgraders for the v4->v5 resource renames
     }
     tls = {
       source  = "hashicorp/tls"
@@ -16,7 +16,8 @@ terraform {
     }
   }
 
-  required_version = ">= 1.5.0"
+  # >= 1.8 required for cross-resource-type `moved` blocks (cloudflare_record -> cloudflare_dns_record)
+  required_version = ">= 1.8.0"
 }
 
 provider "linode" {
@@ -182,7 +183,7 @@ resource "linode_firewall" "searxng" {
     action   = "ACCEPT"
     protocol = "TCP"
     ports    = "443"
-    ipv6     = data.cloudflare_ip_ranges.cloudflare.ipv6_cidr_blocks
+    ipv6     = data.cloudflare_ip_ranges.cloudflare.ipv6_cidrs
   }
 
   inbound_policy  = "DROP"
@@ -194,11 +195,11 @@ resource "linode_firewall" "searxng" {
 # --- Linode Instance ---
 
 resource "linode_instance" "searxng" {
-  label           = "searxng"
-  region          = "us-sea"
-  type            = "g6-nanode-1"
-  image           = data.linode_images.alpine.images[0].id
-  root_pass       = var.root_password
+  label     = "searxng"
+  region    = "us-sea"
+  type      = "g6-nanode-1"
+  image     = data.linode_images.alpine.images[0].id
+  root_pass = var.root_password
 
   stackscript_id   = linode_stackscript.searxng_setup.id
   stackscript_data = {}
@@ -214,7 +215,15 @@ resource "terraform_data" "redeploy" {
 
 # --- Cloudflare DNS ---
 
-resource "cloudflare_record" "searxng" {
+# Renamed from cloudflare_record in the v4 -> v5 provider upgrade. The v5
+# provider's MoveState handler migrates existing state via this moved block,
+# so the live DNS record is preserved (no destroy/recreate).
+moved {
+  from = cloudflare_record.searxng
+  to   = cloudflare_dns_record.searxng
+}
+
+resource "cloudflare_dns_record" "searxng" {
   zone_id = var.cloudflare_zone_id
   name    = local.subdomain
   content = trimsuffix(linode_instance.searxng.ipv6, "/128")
