@@ -68,12 +68,14 @@ jobs:
       - name: Health check
         run: |
           set -eu
-          URL="https://${{ vars.DOMAIN }}/"
+          # Probe /healthz: it is exempt from the SearXNG limiter and returns 200 "OK".
+          # Probing / would get a 429 (curl's User-Agent matches the bot regex).
+          URL="https://${{ vars.DOMAIN }}/healthz"
           for i in $(seq 1 40); do
             CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$URL" || echo 000)
             echo "attempt $i: HTTP $CODE"
             [ "$CODE" = "200" ] && { echo "origin healthy"; exit 0; }
             sleep 15
           done
-          echo "::error::Site did not return 200 within ~10 minutes after apply"
+          echo "::error::Site did not return 200 from /healthz within ~10 minutes after apply"
           exit 1
