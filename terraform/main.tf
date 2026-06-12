@@ -85,6 +85,62 @@ resource "cloudflare_zone_setting" "ssl" {
   depends_on = [cloudflare_origin_ca_certificate.searxng]
 }
 
+# Edge transport hardening + perf. All edge-only (zero origin cost). A bad value fails
+# `terraform apply` loudly in CI before any deploy.
+
+# Force HTTPS at the edge: 301 any plaintext browser<->edge request. This is the only
+# first-request HTTPS enforcement (the proxied zone's plaintext hop is browser<->CF, not origin).
+resource "cloudflare_zone_setting" "always_use_https" {
+  zone_id    = var.cloudflare_zone_id
+  setting_id = "always_use_https"
+  value      = "on"
+}
+
+# HTTP/3 (QUIC) to browsers via Alt-Svc. Purely additive - origin is untouched (CF does not
+# do HTTP/3 to origin); clients fall back to HTTP/2 if UDP/443 is blocked. Cannot degrade.
+resource "cloudflare_zone_setting" "http3" {
+  zone_id    = var.cloudflare_zone_id
+  setting_id = "http3"
+  value      = "on"
+}
+
+# 0-RTT resumption: shaves ~1 RTT on resumed sessions for idempotent GETs. Safe here because
+# the search query is POST and Cloudflare never sends POST as TLS early data (no replay surface).
+resource "cloudflare_zone_setting" "zero_rtt" {
+  zone_id    = var.cloudflare_zone_id
+  setting_id = "0rtt"
+  value      = "on"
+}
+
+# Minimum TLS 1.3 on the browser<->edge hop. DELIBERATE TRADEOFF: this is stricter than the
+# safe default and will refuse (with no error page) any client/middlebox that cannot do TLS 1.3.
+# /healthz uses a modern client so it will NOT catch a locked-out visitor. Accepted for this
+# personal instance accessed from current browsers; lower to "1.2" if older clients must connect.
+resource "cloudflare_zone_setting" "min_tls_version" {
+  zone_id    = var.cloudflare_zone_id
+  setting_id = "min_tls_version"
+  value      = "1.3"
+}
+
+# HSTS at the edge (CF terminates browser TLS, so this is the correct layer - do NOT also set it
+# in nginx). Conservative: 180d, no preload, no includeSubDomains so it self-heals and does not
+# commit sibling hostnames. nosniff=false because SearXNG already emits X-Content-Type-Options.
+# NOTE: browsers enforce HSTS; a misconfig here is NOT caught by /healthz. Resource name must
+# differ from setting_id to avoid a known provider panic.
+resource "cloudflare_zone_setting" "hsts" {
+  zone_id    = var.cloudflare_zone_id
+  setting_id = "security_header"
+  value = {
+    strict_transport_security = {
+      enabled            = true
+      include_subdomains = false
+      max_age            = 15552000
+      nosniff            = false
+      preload            = false
+    }
+  }
+}
+
 # --- StackScript ---
 
 resource "linode_stackscript" "searxng_setup" {
@@ -112,6 +168,15 @@ resource "linode_stackscript" "searxng_setup" {
     "  echo '/swapfile none swap sw 0 0' >> /etc/fstab",
     "  sysctl -w vm.swappiness=10",
     "fi",
+    "",
+    "# vm.overcommit_memory=1 is Valkey's recommended setting. Without it, a failed bgsave fork",
+    "# (--save is on) combined with the default stop-writes-on-bgsave-error makes Valkey REFUSE",
+    "# WRITES while 'ping' still succeeds - a silent limiter failure the healthcheck/healthz miss.",
+    "# Guarded with || true so a sysctl error cannot abort the set -eu boot.",
+    "cat > /etc/sysctl.d/99-tuning.conf <<'SYSCTL'",
+    "vm.overcommit_memory=1",
+    "SYSCTL",
+    "sysctl -p /etc/sysctl.d/99-tuning.conf || true",
     "",
     "# Write TLS cert and key",
     "mkdir -p /etc/nginx/ssl",
@@ -146,12 +211,18 @@ resource "linode_stackscript" "searxng_setup" {
     "    # from Cloudflare's published ranges.",
     join("\n", [for cidr in concat(data.cloudflare_ip_ranges.cloudflare.ipv4_cidrs, data.cloudflare_ip_ranges.cloudflare.ipv6_cidrs) : "    set_real_ip_from ${cidr};"]),
     "    real_ip_header CF-Connecting-IP;",
+    "    # Close the metrics/stats oracle endpoints on this public instance (enable_metrics:false",
+    "    # empties them; this returns 404 so they are not reachable at all).",
+    "    location ~ ^/(stats|metrics) { return 404; }",
     "    location / {",
     "        proxy_pass http://127.0.0.1:8080;",
     "        proxy_set_header Host $host;",
     "        proxy_set_header X-Real-IP $remote_addr;",
     "        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
     "        proxy_set_header X-Forwarded-Proto $scheme;",
+    "        # SearXNG emits a Server-Timing header with per-engine latencies on every",
+    "        # response (a query timing/which-engines-answered side-channel). Strip it.",
+    "        proxy_hide_header Server-Timing;",
     "    }",
     "}",
     "NGINX",
@@ -192,6 +263,11 @@ resource "linode_stackscript" "searxng_setup" {
     "      - duckduckgo videos",
     "      - google videos",
     "      - openstreetmap",
+    "general:",
+    "  # Void the metrics counters so /stats exposes no engine latency/success-rate/score",
+    "  # fingerprint (a block-detection oracle on a public instance). Does not affect ranking;",
+    "  # engine suspension uses an independent mechanism. The route is also 404'd at nginx below.",
+    "  enable_metrics: false",
     "server:",
     "  secret_key: $(head -c 32 /dev/urandom | base64)",
     "  image_proxy: true",
