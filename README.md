@@ -4,7 +4,7 @@ Automated deployment of [SearXNG](https://github.com/searxng/searxng) on Linode 
 
 ## Architecture
 
-- **Compute**: Linode Nanode 1GB running Alpine Linux (latest)
+- **Compute**: Linode Nanode 1GB running Alpine Linux (latest) 
 - **Application**: SearXNG Docker container (`docker.io/searxng/searxng:latest`) with a Valkey sidecar for the rate limiter
 - **TLS**: Cloudflare Origin CA certificate (ECDSA P-256) with nginx reverse proxy, TLS 1.3 only
 - **DNS/Proxy**: Cloudflare proxied `AAAA` record (IPv6); the origin firewall only admits Cloudflare's IPv6 ranges
